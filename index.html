@@ -1673,6 +1673,9 @@
       .normalize('NFKC')
       .replace(/[\u200b-\u200d\ufeff]/g, '')
       .replace(/[\u2018\u2019\u02bc\u2032]/g, "'")
+      .replace(/[\u201c\u201d]/g, '"')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip combining diacritical marks
+      .replace(/[^\x00-\x7F]/g, '')     // remove any remaining non-ASCII
       .replace(/[\s\u00a0\u3000]+/g, ' ')   // NBSP / ideographic space -> normal space
       .trim()
       .toLowerCase();
