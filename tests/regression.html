@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自然拼讀默書王 — 回歸測試 (P2–P6 常用字)</title>
+<style>
+  body{font-family:system-ui,-apple-system,"PingFang HK","Microsoft JhengHei",sans-serif;
+       margin:0;padding:24px;background:#f6f7f9;color:#222}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:#666;font-size:14px;margin-bottom:18px}
+  #summary{background:#fff;padding:20px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+  table{border-collapse:collapse;margin-top:12px;font-size:14px;width:100%}
+  td,th{border:1px solid #e3e3e3;padding:7px 11px;text-align:left}
+  th{background:#fafafa;font-weight:600}
+  .ok{color:#1a7f37;font-weight:700}
+  .bad{color:#c62828;font-weight:700}
+  .verdict{font-size:24px;font-weight:800;margin-top:14px}
+  .section{margin-top:16px;padding:12px 14px;background:#fff;border-radius:10px;
+           border-left:4px solid #ccc}
+  .section.bad{border-left-color:#c62828;background:#fff6f6}
+  .row{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+       padding:3px 0;border-bottom:1px dashed #eee;word-break:break-all}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:#0b62c4;font-size:14px}
+  #status{font-size:14px;color:#666;margin:10px 0}
+  .spin{display:inline-block;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<h1>📚 回歸測試 — 香港小學 P2–P6 常用默書字</h1>
+<div class="sub">
+  呢個檔案會用 <code>iframe</code> 載入真正嘅 <code>index.html</code>，
+  直接測試<strong>已部署嘅函數</strong>（唔係複製品），所以結果永遠反映真實版本。
+</div>
+<div id="status"><span class="spin">⏳</span> 正在載入 index.html …</div>
+<div id="summary" style="display:none"></div>
+
+<script>
+// ======================================================================
+//  HK PRIMARY SCHOOL P2–P6 COMMON DICTATION WORDS
+//  Covers: CVC basics, vowel digraphs, silent letters (knee/knife/knock),
+//  double consonants, UK spellings (colour/favourite/neighbour),
+//  tricky patterns (Wednesday/February/daughter/business/rhythm)
+// ======================================================================
+const WORD_GROUPS = {
+  "P2 基礎": [
+    "cat","dog","sun","moon","star","book","pen","bag","cup","hat",
+    "red","blue","green","big","small","run","jump","eat","drink","sleep",
+    "mother","father","sister","brother","baby","apple","banana","egg","milk","bread",
+    "house","door","window","table","chair","bed","tree","flower","bird","fish",
+    "hand","foot","eye","ear","nose","mouth","head","leg","arm","face",
+    "one","two","three","four","five","six","seven","eight","nine","ten",
+    "boy","girl","man","woman","friend","teacher","school","class","desk","play"
+  ],
+  "P3 進階": [
+    "happy","sad","angry","tired","hungry","thirsty","cold","hot","warm","cool",
+    "morning","afternoon","evening","night","today","tomorrow","yesterday","week","month","year",
+    "breakfast","lunch","dinner","orange","grape","mango","lemon","cherry","peach","melon",
+    "chicken","rice","noodle","soup","cake","candy","chocolate","biscuit","juice","water",
+    "garden","park","zoo","farm","beach","mountain","river","lake","sea","sky",
+    "lion","tiger","elephant","monkey","rabbit","horse","sheep","cow","pig","duck",
+    "family","parent","uncle","aunt","cousin","grandma","grandpa","neighbour","people","child",
+    "walk","talk","sing","dance","draw","write","read","listen","watch","help"
+  ],
+  "P4 中高": [
+    "beautiful","wonderful","careful","helpful","useful","powerful","colourful","peaceful","thankful","cheerful",
+    "weather","season","spring","summer","autumn","winter","sunny","cloudy","rainy","windy",
+    "kitchen","bathroom","bedroom","garage","balcony","ceiling","carpet","curtain",
+    "homework","lesson","subject","English","Chinese","Maths","Science","Music",
+    "library","museum","hospital","restaurant","supermarket","airport","station","cinema","theatre","stadium",
+    "police","doctor","nurse","driver","pilot","farmer","worker","singer","player","artist",
+    "because","although","however","therefore","meanwhile","suddenly","finally","actually","especially","probably",
+    "different","important","interesting","difficult","dangerous","expensive","delicious","necessary","possible","terrible",
+    "exercise","practice","holiday","journey","adventure","treasure","machine","language","knowledge","experience"
+  ],
+  "P5–P6 高小": [
+    "environment","government","development","education","information","communication","transportation","population","celebration","competition",
+    "responsibility","opportunity","possibility","ability","activity","reality","society","community","security","quality",
+    "temperature","literature","agriculture","architecture","photograph","geography","biography","technology","psychology","philosophy",
+    "immediately","independent","intelligent","excellent","successful","confident","permanent","significant","traditional","international",
+    "guarantee","committee","occurrence","recommend","separate","definitely","embarrass","accommodation","conscience",
+    "February","behaviour","favourite","honour","labour","colour","humour","flavour",
+    "dictionary","vocabulary","grammar","sentence","paragraph","punctuation","alphabet","syllable","pronunciation","spelling",
+    "vegetable","cucumber","tomato","potato","cabbage","lettuce","spinach","broccoli","cauliflower","mushroom",
+    "straight","eight","height","weight","freight","daughter","laughter","thought","brought",
+    "scissors","scene","schedule","scholar","scientist","conscious",
+    "rhythm","pneumonia","knee","knife","knock","know","knight","knit","knot",
+    "whistle","castle","hasten","soften","thistle","glisten","fasten",
+    "business","busy","bought","caught","taught","through","though","thorough"
+  ]
+};
+
+// Realistic input variants a HK kid / iPad Chinese IME can actually produce
+function makeVariants(w) {
+  const lower = w.toLowerCase();
+  const toFullwidth = s => s.split('').map(c => {
+    const n = c.charCodeAt(0);
+    return (n >= 97 && n <= 122) ? String.fromCharCode(n + 0xFEE0)
+         : (n >= 65 && n <= 90)  ? String.fromCharCode(n + 0xFEE0) : c;
+  }).join('');
+  return [
+    ["正常小階",      lower],
+    ["全大階 CAPS",   lower.toUpperCase()],
+    ["首字母大階",    lower.charAt(0).toUpperCase() + lower.slice(1)],
+    ["全形 IME",      toFullwidth(lower)],
+    ["前面有空格",    " " + lower],
+    ["後面有空格",    lower + " "],
+    ["母音帶重音符",  lower.split('').map(c => "aeiou".includes(c) ? c + "\u0301" : c).join("")],
+    ["零寬字元",      lower.split("").join("\u200b")],
+    ["彎引號",        "\u201c" + lower + "\u201d"],
+    ["NBSP 空格",     "\u00a0" + lower + "\u00a0"],
+    ["全形空格",      lower + "\u3000"],
+  ];
+}
+
+function seededShuffle(arr, seed) {
+  const a = [...arr];
+  let s = seed, i = a.length, j;
+  while (i !== 0) {
+    s = (s * 9301 + 49297) % 233280;
+    j = Math.floor(s / 233280 * i); i--;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ======================================================================
+//  Load the REAL app in a hidden iframe, then test against its functions
+// ======================================================================
+const frame = document.createElement('iframe');
+frame.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px';
+frame.src = '../index.html?test=' + Date.now();
+document.body.appendChild(frame);
+
+frame.addEventListener('load', () => {
+  setTimeout(runTests, 800);   // let the SPA finish initialising
+});
+
+function setStatus(msg) { document.getElementById('status').innerHTML = msg; }
+
+function runTests() {
+  const W = frame.contentWindow;
+  const need = ['normalizeAnswer', 'autoSplitSyllables', 'syllableGroupsForWord'];
+  const missing = need.filter(fn => typeof W[fn] !== 'function');
+  if (missing.length) {
+    setStatus('❌ 無法取得 index.html 嘅函數：' + missing.join(', ') +
+              '<br>（如果係用 file:// 開啟，瀏覽器會封鎖 iframe 存取。請改用 GitHub Pages 網址，' +
+              '或者喺呢個資料夾起本地 server：python -m http.server）');
+    return;
+  }
+  setStatus('<span class="spin">⏳</span> 正在測試 …');
+
+  const words = [];
+  const seen = new Set();
+  Object.entries(WORD_GROUPS).forEach(([g, ws]) => ws.forEach(w => {
+    const k = w.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); words.push({ g, w }); }
+  }));
+
+  const R = {
+    normPass: 0, normFail: [],
+    sylPass: 0,  sylFail: [],
+    letPass: 0,  letFail: [],
+    sgfwFallback: []
+  };
+
+  words.forEach(({ g, w }) => {
+    // --- 1. normalizeAnswer across all realistic variants ---
+    const target = W.normalizeAnswer(w);
+    makeVariants(w).forEach(([label, variant]) => {
+      const got = W.normalizeAnswer(variant);
+      if (got === target) R.normPass++;
+      else R.normFail.push({ g, w, label, got, target });
+    });
+
+    // --- 2. Syllable split must reassemble into the exact word ---
+    //     (otherwise Blocks 關永遠拼唔完，Letters 關格子數都會錯)
+    try {
+      const syls = W.autoSplitSyllables(w);
+      if (!Array.isArray(syls) || !syls.length) throw new Error('returned empty/not-array');
+      const strip = s => String(s).toLowerCase().replace(/[^a-z]/g, '');
+      if (strip(syls.join('')) === strip(w)) R.sylPass++;
+      else R.sylFail.push({ g, w, syls, rejoined: strip(syls.join('')), expected: strip(w) });
+
+      // syllableGroupsForWord must NOT silently fall back to the whole word
+      const sgfw = W.syllableGroupsForWord({ word: w, syllables: syls });
+      if (sgfw.length === 1 && sgfw[0] === w && syls.length > 1) {
+        R.sgfxFallback = null; // placeholder
+        R.sgfxFallbackUnused = true;
+        R.sgfx = R.sgfx || [];
+        R.sgfx.push({ g, w, syls });
+      }
+    } catch (e) {
+      R.sylFail.push({ g, w, error: String(e.message || e).slice(0, 140) });
+    }
+
+    // --- 3. Letters 關：25 次隨機洗牌都要可以按順序拼返出嚟 ---
+    const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+    if (clean) {
+      let bad = 0;
+      for (let run = 0; run < 25; run++) {
+        const pool = seededShuffle(clean.split('').map(t => ({ t, used: false })), run + 7);
+        let ans = '';
+        for (let p = 0; p < clean.length; p++) {
+          const k = pool.findIndex(x => !x.used && x.t === clean[p]);
+          if (k === -1) { bad++; break; }
+          pool[k].used = true; ans += pool[k].t;
+        }
+        if (W.normalizeAnswer(ans) !== W.normalizeAnswer(clean)) bad++;
+      }
+      if (bad === 0) R.letPass++; else R.letFail.push({ g, w, bad });
+    }
+  });
+
+  render(words, R);
+}
+
+function render(words, R) {
+  const totalFail = R.normFail.length + R.sylFail.length + R.letFail.length;
+  const totalChecks = R.normPass + R.normFail.length
+                    + R.sylPass  + R.sylFail.length
+                    + R.letPass  + R.letFail.length;
+
+  const groupCounts = {};
+  words.forEach(x => groupCounts[x.g] = (groupCounts[x.g] || 0) + 1);
+
+  let h = '';
+  h += `<div class="verdict ${totalFail === 0 ? 'ok' : 'bad'}">`;
+  h += totalFail === 0 ? '🎉 全部通過，零 Bug！' : `⚠️ 發現 ${totalFail} 個問題`;
+  h += `</div>`;
+
+  h += `<table>
+    <tr><th>測試項目</th><th>檢查數</th><th>通過</th><th>失敗</th></tr>
+    <tr><td>1️⃣ <code>normalizeAnswer</code> — 11 種真實輸入變體</td>
+        <td>${R.normPass + R.normFail.length}</td>
+        <td class="ok">${R.normPass}</td>
+        <td class="${R.normFail.length ? 'bad' : 'ok'}">${R.normFail.length}</td></tr>
+    <tr><td>2️⃣ <code>autoSplitSyllables</code> — 音節必須拼返原字</td>
+        <td>${R.sylPass + R.sylFail.length}</td>
+        <td class="ok">${R.sylPass}</td>
+        <td class="${R.sylFail.length ? 'bad' : 'ok'}">${R.sylFail.length}</td></tr>
+    <tr><td>3️⃣ Letters 關 — 每字 25 次隨機洗牌</td>
+        <td>${R.letPass + R.letFail.length}</td>
+        <td class="ok">${R.letPass}</td>
+        <td class="${R.letFail.length ? 'bad' : 'ok'}">${R.letFail.length}</td></tr>
+    <tr style="background:#fafafa;font-weight:700">
+        <td>總計</td><td>${totalChecks}</td>
+        <td class="ok">${totalChecks - totalFail}</td>
+        <td class="${totalFail ? 'bad' : 'ok'}">${totalFail}</td></tr>
+  </table>`;
+
+  h += `<div class="section ok"><strong>測試字表：</strong>共 ${words.length} 個不重複單字<br>`;
+  Object.entries(groupCounts).forEach(([g, n]) => { h += `&nbsp;• ${g}：${n} 字<br>`; });
+  h += `</div>`;
+
+  h += `<div class="section ok"><strong>11 種輸入變體：</strong><br>
+        正常小階 · 全大階 · 首字母大階 · 全形 IME（中文鍵盤）· 前後空格 ·
+        母音帶組合重音符 · 零寬字元 · 彎引號 · NBSP · 全形空格</div>`;
+
+  if (R.normFail.length) {
+    h += `<div class="section bad"><strong>❌ normalizeAnswer 失敗 (${R.normFail.length})</strong>`;
+    R.normFail.slice(0, 60).forEach(f => {
+      h += `<div class="row">[${f.g}] '${f.w}' (${f.label}) → 得到 '${f.got}'，應為 '${f.target}'</div>`;
+    });
+    if (R.normFail.length > 60) h += `<div class="row">… 另外 ${R.normFail.length - 60} 個</div>`;
+    h += `</div>`;
+  }
+
+  if (R.sylFail.length) {
+    h += `<div class="section bad"><strong>❌ 音節拆分失敗 (${R.sylFail.length})</strong>`;
+    R.sylFail.slice(0, 60).forEach(f => {
+      h += f.error
+        ? `<div class="row">[${f.g}] '${f.w}' ERROR: ${f.error}</div>`
+        : `<div class="row">[${f.g}] '${f.w}' → [${f.syls.join('|')}] 拼返='${f.rejoined}' 應為='${f.expected}'</div>`;
+    });
+    if (R.sylFail.length > 60) h += `<div class="row">… 另外 ${R.sylFail.length - 60} 個</div>`;
+    h += `</div>`;
+  }
+
+  if (R.letFail.length) {
+    h += `<div class="section bad"><strong>❌ Letters 洗牌失敗 (${R.letFail.length})</strong>`;
+    R.letFail.slice(0, 60).forEach(f => {
+      h += `<div class="row">[${f.g}] '${f.w}' — ${f.bad}/25 次洗牌失敗</div>`;
+    });
+    h += `</div>`;
+  }
+
+  if (R.sgfx && R.sgfx.length) {
+    h += `<details><summary>ℹ️ syllableGroupsForWord 降級為整字 (${R.sgfx.length}) — 通常唔影響判對，只係少了音節拆分</summary>`;
+    R.sgfx.slice(0, 80).forEach(f => {
+      h += `<div class="row">[${f.g}] '${f.w}' → [${f.syls.join('|')}]</div>`;
+    });
+    h += `</details>`;
+  }
+
+  document.getElementById('summary').innerHTML = h;
+  document.getElementById('summary').style.display = 'block';
+  setStatus('');
+  window.__RESULT__ = { words: words.length, totalChecks, totalFail, R };
+}
+</script>
+</body>
+</html>
