@@ -1,4 +1,4 @@
-const CACHE_NAME = 'phonics-pwa-v1';
+const CACHE_NAME = 'phonics-pwa-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -23,8 +23,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Network-first: always try the live version so bug fixes reach every device immediately.
+// Falls back to cache only when offline so the app still works without wifi.
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((c) => c.put(event.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(event.request).then((c) => c || caches.match('./index.html')))
   );
 });

@@ -1275,7 +1275,7 @@
     const container = document.getElementById('syllable-container');
     container.innerHTML = '';
 
-    item.syllables.forEach((syl, idx) => {
+    syllableGroupsForWord(item).forEach((syl, idx) => {
       const col = document.createElement('div');
       col.className = `syl-column color-${idx % 4}`;
       col.id = `syl-col-${idx}`;
@@ -1311,11 +1311,12 @@
 
   function speakSyllablesSlowly() {
     const item = wordsData[currentIndex];
+    const groups = syllableGroupsForWord(item);
     let step = 0;
     function playNext() {
-      if (step < item.syllables.length) {
+      if (step < groups.length) {
         highlightSyllable(step);
-        const speakPart = (item.sylSpeak && item.sylSpeak[step]) ? item.sylSpeak[step] : item.syllables[step];
+        const speakPart = (item.sylSpeak && item.sylSpeak[step]) ? item.sylSpeak[step] : groups[step];
         step++;
         speakText(speakPart, 0.75, () => setTimeout(playNext, 280));
       } else {
@@ -1389,15 +1390,16 @@
       instr.textContent = '🧩 第2關：聽讀音，按順序點擊「音節積木」拼出單字！';
 
       userSelectedBlocks = [];
-      shuffledBlocks = shuffleArray(item.syllables.map((s, i) => ({ text: s, origIndex: i, used: false })));
+      shuffledBlocks = shuffleArray(syllableGroupsForWord(item).map((s, i) => ({ text: s, origIndex: i, used: false })));
       renderBlocksQuiz();
     } else if (currentQuizMode === 'fill') {
       blocksArea.style.display = 'none';
       inputArea.style.display = 'flex';
-      currentMaskedSylIndex = item.syllables.length > 1 ? 1 : 0;
-      const missingSyl = item.syllables[currentMaskedSylIndex];
+      const groups = syllableGroupsForWord(item);
+      currentMaskedSylIndex = groups.length > 1 ? 1 : 0;
+      const missingSyl = groups[currentMaskedSylIndex];
       instr.textContent = `✏️ 第3關：看音節提示，輸入缺少的音節（或完整單字）！`;
-      const masked = item.syllables.map((s, i) => i === currentMaskedSylIndex ? '_'.repeat(s.length) : s).join(' · ');
+      const masked = groups.map((s, i) => i === currentMaskedSylIndex ? '_'.repeat(s.length) : s).join(' · ');
       document.getElementById('quiz-hint-mask').textContent = masked;
       const inp = document.getElementById('quiz-text-input');
       inp.placeholder = `請輸入缺少的 ${missingSyl.length} 個字母 (或完整單字)...`;
@@ -1407,7 +1409,7 @@
       blocksArea.style.display = 'none';
       inputArea.style.display = 'flex';
       instr.textContent = '🏆 第4關（模擬學校默書）：只聽讀音與中文，完整默寫單字！';
-      document.getElementById('quiz-hint-mask').textContent = `(${item.syllables.length} 個音節，共 ${item.word.length} 個字母)`;
+      document.getElementById('quiz-hint-mask').textContent = `(${syllableGroupsForWord(item).length} 個音節，共 ${item.word.length} 個字母)`;
       const inp = document.getElementById('quiz-text-input');
       inp.placeholder = '在此輸入完整單字...';
       inp.value = '';
@@ -1428,7 +1430,7 @@
     guideWrap.className = 'syllable-guide-slots';
 
     let globalLetterPos = 0;
-    item.syllables.forEach((syl) => {
+    syllableGroupsForWord(item).forEach((syl) => {
       const group = document.createElement('div');
       group.className = 'syllable-slot-group';
       for (let i = 0; i < syl.length; i++) {
@@ -1484,10 +1486,10 @@
     if (userSelectedBlocks.length === item.word.length) {
       const attempt = userSelectedBlocks.map(b => b.text).join('');
       const fb = document.getElementById('quiz-feedback');
-      if (attempt.toLowerCase() === item.word.toLowerCase()) {
+      if (normalizeAnswer(attempt) === normalizeAnswer(item.word)) {
         awardStar();
         fb.className = 'feedback-banner correct';
-        fb.innerHTML = `🎉 太棒了！+1 ⭐｜${item.word.length} 個字母全部串對：<strong>${item.syllables.join(' · ')}</strong> (${item.word})`;
+        fb.innerHTML = `🎉 太棒了！+1 ⭐｜${item.word.length} 個字母全部串對：<strong>${syllableGroupsForWord(item).join(' · ')}</strong> (${item.word})`;
         speakText("Awesome! " + item.word, 0.95);
       } else {
         fb.className = 'feedback-banner wrong';
@@ -1535,13 +1537,14 @@
 
   function checkBlocksAnswer() {
     const item = wordsData[currentIndex];
-    if (userSelectedBlocks.length === item.syllables.length) {
+    const groups = syllableGroupsForWord(item);
+    if (userSelectedBlocks.length === groups.length) {
       const attempt = userSelectedBlocks.map(b => b.text).join('');
       const fb = document.getElementById('quiz-feedback');
-      if (attempt.toLowerCase() === item.word.toLowerCase()) {
+      if (normalizeAnswer(attempt) === normalizeAnswer(item.word)) {
         awardStar();
         fb.className = 'feedback-banner correct';
-        fb.innerHTML = `🎉 太棒了！+1 ⭐｜拼讀完全正確：<strong>${item.syllables.join(' · ')}</strong> (${item.word})`;
+        fb.innerHTML = `🎉 太棒了！+1 ⭐｜拼讀完全正確：<strong>${groups.join(' · ')}</strong> (${item.word})`;
         speakText("Great job! " + item.word, 0.95);
       } else {
         fb.className = 'feedback-banner wrong';
@@ -1556,9 +1559,11 @@
     const fb = document.getElementById('quiz-feedback');
     if (!val) return;
 
-    const cleanVal = val.toLowerCase();
-    const fullWord = item.word.toLowerCase();
-    const missingSyl = (item.syllables[currentMaskedSylIndex] || '').toLowerCase();
+    const cleanVal = normalizeAnswer(val);
+    const fullWord = normalizeAnswer(item.word);
+    const groups = syllableGroupsForWord(item);
+    const missingSylRaw = groups[currentMaskedSylIndex] || '';
+    const missingSyl = normalizeAnswer(missingSylRaw);
 
     const isCorrect = (currentQuizMode === 'fill')
       ? (cleanVal === missingSyl || cleanVal === fullWord)
@@ -1569,16 +1574,16 @@
       fb.className = 'feedback-banner correct';
       // Update mask display to reveal the completed word
       if (currentQuizMode === 'fill') {
-        document.getElementById('quiz-hint-mask').textContent = item.syllables.join(' · ');
+        document.getElementById('quiz-hint-mask').textContent = groups.join(' · ');
       }
-      fb.innerHTML = `🌟 100分！+1 ⭐｜完全正確：<strong>${item.syllables.join(' · ')}</strong> (${item.word})`;
+      fb.innerHTML = `🌟 100分！+1 ⭐｜完全正確：<strong>${groups.join(' · ')}</strong> (${item.word})`;
       speakText("Excellent! " + item.word, 0.95);
     } else {
       fb.className = 'feedback-banner wrong';
       if (currentQuizMode === 'fill') {
-        fb.innerHTML = `💡 差一點點！空格缺少的音節是 <strong>${item.syllables[currentMaskedSylIndex]}</strong>（完整拆法：<strong>${item.syllables.join(' · ')}</strong>，你寫了：${val}）。`;
+        fb.innerHTML = `💡 差一點點！空格缺少的音節是 <strong>${missingSylRaw}</strong>（完整拆法：<strong>${groups.join(' · ')}</strong>，你寫了：${val}）。`;
       } else {
-        fb.innerHTML = `💡 差一點點！正確拆法是：<strong>${item.syllables.join(' · ')}</strong>（你寫了：${val}）。再聽一次慢速拼讀試試！`;
+        fb.innerHTML = `💡 差一點點！正確拆法是：<strong>${groups.join(' · ')}</strong>（你寫了：${val}）。再聽一次慢速拼讀試試！`;
       }
       speakSyllablesSlowly();
     }
@@ -1623,17 +1628,53 @@
     });
   }
 
+  // Normalise any typed answer so kids are never marked wrong for harmless input differences:
+  // full-width letters (Chinese IME), curly quotes, accents, zero-width chars, NBSP, case, spacing.
+  function normalizeAnswer(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .normalize('NFKC')                 // ＱＵＩＥＴ -> QUIET, full-width punctuation -> ASCII
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quïet -> quiet
+      .replace(/[\u200b-\u200d\ufeff]/g, '')             // zero-width chars
+      .replace(/[\u2018\u2019\u02bc\u2032]/g, "'")       // curly apostrophes -> '
+      .replace(/[\u201c\u201d]/g, '"')
+      .replace(/[\s\u00a0\u3000]+/g, '')                 // all whitespace incl. NBSP / ideographic space
+      .toLowerCase();
+  }
+
   // Auto-syllabify helper if parent enters plain word without hyphens
   function autoSplitSyllables(rawWord) {
-    if (rawWord.includes('-')) {
-      return rawWord.split('-').map(s => s.trim()).filter(Boolean);
+    const cleaned = String(rawWord).normalize('NFKC').replace(/[\u200b-\u200d\ufeff]/g, '').trim();
+    if (cleaned.includes('-')) {
+      return cleaned.split('-').map(s => s.trim()).filter(Boolean);
     }
-    const parts = rawWord.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
-    return parts && parts.length > 0 ? parts : [rawWord];
+    // A parent may separate syllables with a slash too (e.g. "qui/et")
+    if (cleaned.includes('/')) {
+      const bySep = cleaned.split('/').map(s => s.trim()).filter(Boolean);
+      if (bySep.length > 1) return bySep;
+    }
+    const parts = cleaned.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
+    return parts && parts.length > 0 ? parts : [cleaned];
+  }
+
+  // Syllables must rebuild the exact word, otherwise the letter-slot quiz can never be completed.
+  function syllableGroupsForWord(item) {
+    const syls = Array.isArray(item.syllables) && item.syllables.length ? item.syllables : [item.word];
+    const rebuilt = syls.join('');
+    if (rebuilt.toLowerCase() !== String(item.word).toLowerCase()) {
+      return [item.word];
+    }
+    return syls;
   }
 
   function addCustomWord() {
-    const rawWord = document.getElementById('new-word-input').value.trim();
+    const rawWord = document.getElementById('new-word-input').value
+      .normalize('NFKC')
+      .replace(/[\u200b-\u200d\ufeff]/g, '')
+      .replace(/[\u2018\u2019\u02bc\u2032]/g, "'")
+      .replace(/[\s\u00a0\u3000]+/g, ' ')   // NBSP / ideographic space -> normal space
+      .trim()
+      .toLowerCase();
     const meaning = document.getElementById('new-meaning-input').value.trim() || '自訂默書生字';
     const note = document.getElementById('new-sentence-input').value.trim();
 
@@ -1679,7 +1720,7 @@
       row.className = 'word-list-row';
       row.innerHTML = `
         <div>
-          <strong style="font-size:15px; color:var(--primary);">${item.syllables.join(' · ')}</strong>
+          <strong style="font-size:15px; color:var(--primary);">${syllableGroupsForWord(item).join(' · ')}</strong>
           <span style="font-size:13px; color:var(--text-sub); margin-left:8px;">${item.meaning}</span>
         </div>
         <button class="delete-btn" onclick="removeWord(${idx})">刪除</button>
@@ -1891,7 +1932,20 @@
     renderIpaChart();
     renderCustomWordList();
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      // Auto-update: whenever a new sw.js is published, activate it and reload once
+      // so installed users never stay stuck on an old build.
+      navigator.serviceWorker.register('./sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'activated' && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        });
+        setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      }).catch(() => {});
     }
   });
 </script>
