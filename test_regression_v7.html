@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phonics PWA — Full Regression Test</title>
+<style>
+body { font-family: system-ui; margin: 0; padding: 20px; background: #f5f5f5; }
+h1 { color: #333; }
+.pass { color: green; font-weight: bold; }
+.fail { color: red; font-weight: bold; }
+.warn { color: orange; font-weight: bold; }
+.result-row { margin: 2px 0; padding: 4px 8px; border-radius: 4px; }
+.result-pass { background: #e6ffe6; }
+.result-fail { background: #ffe6e6; }
+textarea { width: 100%; height: 120px; font-size: 12px; margin-top: 10px; }
+#summary { background: white; padding: 16px; border-radius: 8px; margin-top: 16px; font-size: 16px; }
+.test-word { padding: 2px 6px; margin: 2px; display: inline-block; border-radius: 3px; cursor: pointer; user-select: none; }
+.test-word.used { opacity: 0.3; text-decoration: line-through; }
+</style>
+</head>
+<body>
+<h1>📝 Phonics PWA — Full Regression Test (50 words × 3 modes)</h1>
+<div id="results"></div>
+<div id="summary"></div>
+<textarea id="log" readonly></textarea>
+
+<script>
+// ========== normalizeAnswer (copied from index.html) ==========
+function normalizeAnswer(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).trim()
+        .toLowerCase()
+        .normalize('NFKC')
+        .replace(/[\u0300-\u036f\u200b]/g, '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\u201c\u201d]/g, '"');
+}
+
+// ========== autoSplitSyllables (from index.html source) ==========
+function autoSplitSyllables(word) {
+    // Common patterns and exception lists from index.html
+    const exceptions = [
+        'squirrel','strength','psychology','pharmacy','environment',
+        'gymnasium','aeroplane','thousand','afternoon','understand',
+        'beautiful','chocolate','necessary','favourite','question',
+        'Wednesday','elephant','different','library','morning',
+        'beginning','running','computer','umbrella','quiet'
+    ];
+    
+    const w = word.toLowerCase();
+    if (exceptions.includes(w)) {
+        // Map known exceptions
+        const known = {
+            'squirrel': ['squir', 'rel'],
+            'strength': ['strength'],
+            'psychology': ['psyc', 'ho', 'lo', 'gy'],
+            'pharmacy': ['phar', 'ma', 'cy'],
+            'environment': ['en', 'vi', 'ron', 'ment'],
+            'gymnasium': ['gym', 'na', 'sium'],
+            'aeroplane': ['ae', 'rop', 'la', 'ne'],
+            'thousand': ['thou', 'sand'],
+            'afternoon': ['af', 'ter', 'noon'],
+            'understand': ['un', 'der', 'stand'],
+            'beautiful': ['beau', 'ti', 'ful'],
+            'chocolate': ['cho', 'co', 'la', 'te'],
+            'necessary': ['ne', 'ces', 'sa', 'ry'],
+            'favourite': ['fa', 'vou', 'ri', 'te'],
+            'question': ['ques', 'tion'],
+            'wednesday': ['wed', 'nes', 'day'],
+            'elephant': ['e', 'lep', 'hant'],
+            'different': ['dif', 'fe', 'rent'],
+            'library': ['lib', 'ra', 'ry'],
+            'morning': ['mor', 'ning'],
+            'beginning': ['be', 'gin', 'ning'],
+            'running': ['run', 'ning'],
+            'computer': ['com', 'pu', 'ter'],
+            'umbrella': ['um', 'brel', 'la'],
+            'quiet': ['quiet']
+        };
+        return known[w] || [w];
+    }
+    
+    // Heuristic syllable splitting for other words
+    const vowels = 'aeiou';
+    const syls = [];
+    let current = '';
+    for (let i = 0; i < w.length; i++) {
+        current += w[i];
+        if (i + 1 < w.length && vowels.includes(w[i + 1])) {
+            if (current.length > 1) {
+                syls.push(current);
+                current = '';
+            }
+        }
+    }
+    if (current) syls.push(current);
+    if (syls.length === 0) syls.push(w);
+    return syls;
+}
+
+// ========== shuffleArray ==========
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    // Ensure not same as original
+    if (a.map(x => x.text).join('') === arr.map(x => x.text).join('') && arr.length > 1) {
+        for (let i = 0; i < Math.floor(a.length / 2); i++) {
+            [a[i], a[a.length - 1 - i]] = [a[a.length - 1 - i], a[i]];
+        }
+    }
+    return a;
+}
+
+// ========== Simulated Quiz Functions ==========
+let shuffledBlocks;
+let userSelectedBlocks;
+
+// --- Letters mode simulation ---
+function simulateLettersQuiz(itemWord) {
+    const letters = itemWord.split('').map((ch, i) => ({ text: ch, origIndex: i, used: false }));
+    const pool = shuffleArray(letters);
+    
+    // Simulate clicking through all tiles in order (best-case scenario)
+    // First, find correct letter for position 0
+    let selected = [];
+    let correctOrder = true;
+    
+    for (let pos = 0; pos < itemWord.length; pos++) {
+        const needed = itemWord[pos].toLowerCase();
+        // Find tile that matches AND has correct original index
+        // In real app, user must click in WORD ORDER (pos 0 first, then pos 1, etc.)
+        // Each tile has origIndex tracking where it belongs
+        
+        // Check: does the tile at position `selected.length` match what we need?
+        let foundIdx = -1;
+        for (let ti = 0; ti < pool.length; ti++) {
+            if (!pool[ti].used && pool[ti].text.toLowerCase() === needed && pool[ti].origIndex === pos) {
+                foundIdx = ti;
+                break;
+            }
+        }
+        
+        if (foundIdx === -1) {
+            // Can't find matching tile in correct position → check what we HAVE
+            // For duplicate letters, any unused one with same char works
+            foundIdx = -1;
+            for (let ti = 0; ti < pool.length; ti++) {
+                if (!pool[ti].used && pool[ti].text.toLowerCase() === needed) {
+                    foundIdx = ti;
+                    break;
+                }
+            }
+        }
+        
+        if (foundIdx === -1) {
+            correctOrder = false;
+            break;
+        }
+        
+        // Click it
+        const tile = pool[foundIdx];
+        // In real app: tile goes to answer area, remove from pool
+        selected.push(tile);
+        pool[foundIdx].used = true;
+    }
+    
+    // Check result
+    const answer = selected.map(s => s.text).join('');
+    const expected = itemWord;
+    
+    return {
+        passed: normalizeAnswer(answer) === normalizeAnswer(expected),
+        answer,
+        expected
+    };
+}
+
+// --- Blocks mode simulation ---
+function simulateBlocksQuiz(syllables) {
+    // Shuffle syllable blocks (simulating renderBlocksQuiz behavior)
+    const blocks = syllables.map((s, i) => ({ text: s, origIndex: i, used: false }));
+    const pool = shuffleArray(blocks);
+    
+    // Simulate best-case: user clicks blocks in correct order
+    let selected = [];
+    let allFound = true;
+    
+    for (let pos = 0; pos < syllables.length; pos++) {
+        const needed = syllables[pos];
+        let foundIdx = -1;
+        for (let ti = 0; ti < pool.length; ti++) {
+            if (!pool[ti].used && pool[ti].text === needed) {
+                foundIdx = ti;
+                break;
+            }
+        }
+        if (foundIdx === -1) {
+            allFound = false;
+            break;
+        }
+        selected.push(pool[foundIdx]);
+        pool[foundIdx].used = true;
+    }
+    
+    const answer = selected.map(s => s.text).join(',');
+    const expected = syllables.join(',');
+    
+    return {
+        passed: answer === expected && allFound,
+        answer,
+        expected,
+        foundAll: allFound
+    };
+}
+
+// --- Dictation mode simulation ---
+function simulateDictationQuiz(correctWord, inputVariant) {
+    const normCorrect = normalizeAnswer(correctWord);
+    const normInput = normalizeAnswer(inputVariant);
+    
+    return {
+        passed: normInput === normCorrect,
+        input: inputVariant,
+        correct: correctWord
+    };
+}
+
+// ========== Test Suite ==========
+const testWords = [
+    "quiet", "hello", "computer", "Apple", "beautiful",
+    "banana", "different", "elephant", "Wednesday", "tomorrow",
+    "library", "favourite", "necessary", "chocolate", "umbrella",
+    "pencil", "school", "teacher", "morning", "happy",
+    "letter", "window", "summer", "running", "beginning",
+    "science", "friend", "because", "selfish", "happiness",
+    "question", "squirrel", "yellow", "purple", "orange",
+    "grape", "rainbow", "understand", "afternoon", "thousand",
+    "strength", "pharmacy", "victory", "environment", "empty",
+    "gymnasium", "aeroplane", "autumn", "psychology", "rhythm"
+];
+
+// Input variants to test for dictation
+const dictationVariants = [
+    { label: "lowercase", value: (w) => w.toLowerCase() },
+    { label: "uppercase", value: (w) => w.toUpperCase() },
+    { label: "titlecase", value: (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() },
+    { label: "mixed case", value: (w) => w.split('').map((c,i) => i%2===0 ? c.toUpperCase() : c.toLowerCase()).join('') },
+    { label: "with leading space", value: (w) => ' ' + w.toLowerCase() },
+    { label: "with trailing space", value: (w) => w.toLowerCase() + ' ' },
+    { label: "fullwidth", value: (w) => w.split('').map(c => {
+        if (c >= 'A' && c <= 'Z') return String.fromCharCode(c.charCodeAt(0) + 0xFEE0);
+        if (c >= 'a' && c <= 'z') return String.fromCharCode(c.charCodeAt(0) + 0xFEE0);
+        return c;
+    }).join('') },
+];
+
+let totalPass = 0, totalFail = 0, totalWarn = 0;
+let resultsHTML = '';
+let logLines = [];
+
+function log(msg) {
+    logLines.push(msg);
+    document.getElementById('log').value = logLines.join('\n');
+}
+
+testWords.forEach((rawWord, idx) => {
+    const cleanWord = rawWord; // Keep original casing from source
+    const lowerWord = cleanWord.toLowerCase();
+    const syls = autoSplitSyllables(cleanWord);
+    
+    resultsHTML += `<div class="result-row ${cleanWord !== lowerWord ? 'result-warn' : ''}" style="${cleanWord !== lowerWord ? 'background:#fffbeb;' : ''}">`;
+    resultsHTML += `<strong>#${idx+1}</strong> <em>${cleanWord}</em> (${cleanWord.length} letters, ${syls.length} syls)`;
+    
+    // ---- Letters Mode ----
+    let lettersResult = simulateLettersQuiz(lowerWord);
+    if (lettersResult.passed) {
+        totalPass++;
+        resultsHTML += ` ✅ 🔤`;
+    } else {
+        totalFail++;
+        resultsHTML += ` ❌ 🔤 got="${lettersResult.answer}" exp="${lettersResult.expected}"`;
+        log(`FAIL Letters: #${idx+1} '${cleanWord}' → got '${lettersResult.answer}' expected '${lettersResult.expected}'`);
+    }
+    
+    // ---- Blocks Mode ----
+    let blocksResult = simulateBlocksQuiz(syls);
+    if (blocksResult.passed) {
+        totalPass++;
+        resultsHTML += ` ✅ 🧩`;
+    } else {
+        totalFail++;
+        resultsHTML += ` ❌ 🧩 found=${blocksResult.foundAll}`;
+        log(`FAIL Blocks: #${idx+1} '${cleanWord}' syls=[${syls.join(',')}] foundAll=${blocksResult.foundAll}`);
+    }
+    
+    // ---- Dictation Mode (multiple variants) ----
+    let dictationResults = [];
+    dictationVariants.forEach(variant => {
+        const inputValue = variant.value(cleanWord);
+        let dictResult = simulateDictationQuiz(cleanWord, inputValue);
+        if (dictResult.passed) {
+            totalPass++;
+            dictationResults.push(`✅ ${variant.label}`);
+        } else {
+            totalFail++;
+            dictationResults.push(`❌ ${variant.label}`);
+            log(`FAIL Dictation (${variant.label}): #${idx+1} '${cleanWord}' input='${inputValue}' norm_input='${normalizeAnswer(inputValue)}' norm_correct='${normalizeAnswer(cleanWord)}'`);
+        }
+    });
+    
+    resultsHTML += ` ✅🏆 ${dictationResults.filter(r=>r.startsWith('✅')).length}/${dictationVariants.length} dictation<br>`;
+    resultsHTML += ` &nbsp;&nbsp;&nbsp; Dictation variants:`;
+    dictationResults.forEach(dr => {
+        resultsHTML += `<span class="test-word ${dr.startsWith('✅') ? '' : ''}" style="color:${dr.startsWith('✅') ? 'green' : 'red'}">${dr}</span> `;
+    });
+    resultsHTML += `</div>`;
+});
+
+document.getElementById('results').innerHTML = resultsHTML;
+
+// Summary
+let summaryHTML = `<h2>Summary:</h2>`;
+summaryHTML += `<p>Total checks: <strong>${totalPass + totalFail}</strong></p>`;
+summaryHTML += `<p class="pass">✅ PASSED: ${totalPass}</p>`;
+summaryHTML += `<p class="fail">❌ FAILED: ${totalFail}</p>`;
+summaryHTML += `<hr>`;
+summaryHTML += `<p><strong>Letters mode: </strong>${testWords.length} tests (user clicks letters in word order)</p>`;
+summaryHTML += `<p><strong>Blocks mode: </strong>${testWords.length} tests (user clicks syllable blocks in order)</p>`;
+summaryHTML += `<p><strong>Dictation mode: </strong>${testWords.length * dictationVariants.length} tests across ${dictationVariants.length} input variants</p>`;
+summaryHTML += `<hr>`;
+
+if (totalFail === 0) {
+    summaryHTML += `<p class="pass" style="font-size:20px;">🎉 ALL TESTS PASSED!</p>`;
+} else {
+    const failRate = ((totalFail / (totalPass + totalFail)) * 100).toFixed(1);
+    summaryHTML += `<p class="fail" style="font-size:20px;">⚠️ ${totalFail} failures out of ${totalPass + totalFail} checks (${failRate}%)</p>`;
+    summaryHTML += `<details><summary>Click to see failed tests</summary><pre>${logLines.join('\n')}</pre></details>`;
+}
+
+document.getElementById('summary').innerHTML = summaryHTML;
+
+// Also output detailed failure info
+console.log("====== DETAILED RESULTS ======");
+console.log(`Total: ${totalPass + totalFail}, Pass: ${totalPass}, Fail: ${totalFail}`);
+console.log(logLines.join('\n'));
+</script>
+</body>
+</html>

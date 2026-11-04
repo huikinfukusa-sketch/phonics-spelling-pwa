@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Regression Test</title></head>
+<body>
+<pre id="output"></pre>
+<script>
+// Extract key functions from the actual app logic
+function normalizeAnswer(str) {
+    str = String(str).normalize('NFKC');
+    // Remove combining marks
+    str = str.replace(/[\u0300-\u036f]/g, '');
+    // Remove zero-width chars
+    str = str.replace(/[\u200b-\u200d\ufeff]/g, '');
+    // Replace NBSP
+    str = str.replace(/\u00a0/g, ' ');
+    // Smart quotes
+    str = str.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
+    return str;
+}
+
+function autoSplitSyllables(word) {
+    const w = word.toLowerCase();
+    const vowels = 'aeiouy';
+    
+    // Handle words ending in -ed
+    if (w.length > 2 && w.endsWith('ed') && 
+        !vowels.includes(w[w.length-3]) && 
+        !/[zl]st|zld|zd|nkl|vlt|vk|mpd|ngd/.test(w.substring(w.length-4))) {
+        // Simple -ed rule: don't split
+    }
+    
+    // Try to split into syllables
+    const result = [];
+    let i = 0;
+    const len = w.length;
+    
+    while (i < len) {
+        // Find next vowel position
+        let vIdx = -1;
+        for (let j = i + 1; j <= Math.min(i + 5, len); j++) {
+            if (j < len && vowels.includes(w[j])) { vIdx = j; break; }
+        }
+        
+        if (vIdx === -1) {
+            // No more vowels - append rest
+            if (i < len) {
+                result.push(w.substring(i, Math.min(i+3, len)));
+                i = len;
+            }
+            continue;
+        }
+        
+        // Check for common digraphs starting at vIdx
+        const next2 = w.substring(vIdx, vIdx+2);
+        const skipVowels = 'shchthphpspsauaiouei';
+        
+        if (next2 === 'qu' || ['th','sh','ch','ph','wh'].includes(next2)) {
+            // Skip consonant cluster after vowel
+            let endIdx = vIdx + 2;
+            while (endIdx < len && !vowels.includes(w[endIdx])) { endIdx++; }
+            if (endIdx <= vIdx + 5) {
+                result.push(w.substring(i, endIdx));
+                i = endIdx;
+            } else {
+                result.push(w.substring(i, vIdx + 1));
+                i = vIdx + 1;
+            }
+        } else {
+            // Simple vowel group
+            let endIdx = vIdx + 1;
+            while (endIdx < len && vowels.includes(w[endIdx])) { endIdx++; }
+            
+            // Check if followed by consonants that belong to next syllable
+            let ci = endIdx;
+            while (ci < len && !vowels.includes(w[ci]) && ci < endIdx + 3) {
+                // If single consonant between vowels, goes to next syllable
+                if (ci === endIdx && endIdx + 1 < len && vowels.includes(w[endIdx + 1])) {
+                    break;
+                }
+                ci++;
+            }
+            
+            result.push(w.substring(i, ci));
+            i = ci;
+        }
+    }
+    
+    // Filter out empty strings and single consonants
+    return result.filter(s => s.length >= 1);
+}
+
+function syllableGroupsForWord(item) {
+    if (!item || !item.word) return [item?.word];
+    const syls = item.syllables || [];
+    const cleanW = item.word.toLowerCase().replace(/[^a-z]/g, '');
+    
+    if (syls.length > 0 && syls.join('').length === cleanW.length) {
+        return syls;
+    }
+    
+    // Validate by checking if reconstructed matches original
+    const auto = autoSplitSyllables(cleanW);
+    if (auto.join('').length === cleanW.length && auto.length > 0) {
+        return auto;
+    }
+    
+    // Fallback: return whole word
+    return [cleanW];
+}
+
+// Test data
+const testWords = [
+    "quiet", "hello", "computer", "Apple", "beautiful",
+    "banana", "different", "elephant", "Wednesday", "tomorrow",
+    "library", "favourite", "necessary", "chocolate", "umbrella",
+    "pencil", "school", "teacher", "morning", "happy",
+    "letter", "window", "summer", "running", "beginning",
+    "science", "friend", "because", "selfish", "happiness",
+    "question", "squirrel", "yellow", "purple", "orange",
+    "grape", "rainbow", "understand", "afternoon", "thousand",
+    "strength", "pharmacy", "victory", "environment", "empty",
+    "gymnasium", "aeroplane", "autumn", "psychology", "rhythm"
+];
+
+let results = [];
+let failures = { letters: [], blocks: [], dictation: [] };
+let errorCount = 0;
+
+for (const raw_word of testWords) {
+    const clean_w = raw_word.toLowerCase().trim();
+    const syls = syllableGroupsForWord({ word: clean_w });
+    const expectedSlots = clean_w.length;
+    const actualSlots = syls.reduce((sum, s) => sum + s.length, 0);
+    
+    // Letter mode test
+    let letterOk = true;
+    let reason = '';
+    
+    if (actualSlots !== expectedSlots) {
+        failures.letters.push({ word: raw_word, expected: expectedSlots, actual: actualSlots });
+        reason += `L:${actualSlots}vs${expectedSlots}`;
+        letterOk = false;
+    }
+    
+    // Check each character exists in syllables
+    if (letterOk) {
+        const sylChars = syls.join('');
+        for (let ch of clean_w) {
+            if (!sylChars.includes(ch)) {
+                failures.letters.push({ word: raw_word, missingChar: ch, syllables: syls });
+                reason += `L:missing '${ch}'`;
+                letterOk = false;
+                break;
+            }
+        }
+    }
+    
+    // Block mode test - count syllables
+    let blocksOk = syls.length > 0 && actualSlots === expectedSlots;
+    if (!blocksOk) {
+        failures.blocks.push({ word: raw_word, syllables: syls, totalLen: actualSlots, wordLen: expectedSlots });
+        reason += 'B:';
+    }
+    
+    // Dictation test - normalizeAnswer
+    const variants = [
+        clean_w.toUpperCase(),           // ALL CAPS
+        clean_w.charAt(0).toUpperCase() + clean_w.slice(1),  // Title case
+        clean_w,                          // lowercase
+        // Full-width variants
+        clean_w.split('').map(c => c.charCodeAt(0) >= 97 && c.charCodeAt(0) <= 122 
+            ? String.fromCharCode(c.charCodeAt(0) + 0xFF01 - 97) : c).join(''),
+        // With NBSP
+        clean_w.replace(/ /g, '\u00a0'),
+        // With zero-width char
+        'q\u200b' + clean_w.slice(1),
+    ];
+    
+    let dictOk = true;
+    for (const v of variants) {
+        const normalized_input = normalizeAnswer(v);
+        const normalized_target = normalizeAnswer(clean_w);
+        if (normalized_input !== normalized_target) {
+            failures.dictation.push({ word: raw_word, variant: JSON.stringify(v), input_norm: normalized_input, target_norm: normalized_target });
+            dictOk = false;
+        }
+    }
+    
+    if (!dictOk) {
+        reason += 'D:fail';
+    }
+    
+    const status = reason ? '❌ FAIL' : '✅ OK';
+    console.log(`[${status}] ${raw_word}: syls=${JSON.stringify(syls)} (${syls.length}) slots_check=${letterOk ? 'pass' : 'FAIL'} dict=${dictOk ? 'pass' : 'FAIL'}`);
+    
+    if (reason) {
+        results.push({ word: raw_word, issues: reason });
+    }
+}
+
+// Summary
+console.log('\n===== SUMMARY =====');
+console.log('Letters failures:', failures.letters.length);
+console.log('Blocks failures:', failures.blocks.length);
+console.log('Dictation failures:', failures.dictation.length);
+
+// Print details
+if (failures.letters.length > 0) {
+    console.log('\n🔤 LETTERS FAILURES:');
+    failures.letters.forEach(f => console.log(`  ${f.word}: expected=${f.expected} actual=${f.actual} missing='${f.missingChar}' syls=${JSON.stringify(f.syllables)}`));
+}
+if (failures.blocks.length > 0) {
+    console.log('\n🧩 BLOCKS FAILURES:');
+    failures.blocks.forEach(f => console.log(`  ${f.word}: syls=${JSON.stringify(f.syllables)} total_len=${f.totalLen} word_len=${f.wordLen}`));
+}
+if (failures.dictation.length > 0) {
+    console.log('\n🏆 DICTATION FAILURES:');
+    failures.dictation.forEach(f => console.log(`  ${f.word}: input="${f.variant}" norm="${f.input_norm}" target="${f.target_norm}"`));
+}
+
+document.getElementById('output').textContent = 
+    `TOTAL TESTED: ${testWords.length}\n` +
+    `LETTERS FAILURES: ${failures.letters.length}\n` +
+    `BLOCKS FAILURES: ${failures.blocks.length}\n` +
+    `DICTATION FAILURES: ${failures.dictation.length}\n` +
+    `\nSee console for details.`;
+</script>
+</body>
+</html>
