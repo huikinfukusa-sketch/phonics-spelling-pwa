@@ -115,6 +115,11 @@ function makeVariants(w) {
   ];
 }
 
+// Authoritative syllable counts (British English, as taught in HK primary schools).
+// This is the check that catches a *quality* regression: reassembly can stay
+// perfect while the split boundaries silently get worse.
+const EXPECTED_SYLLABLES = {"cat": 1, "dog": 1, "sun": 1, "moon": 1, "star": 1, "book": 1, "pen": 1, "bag": 1, "cup": 1, "hat": 1, "red": 1, "blue": 1, "green": 1, "big": 1, "small": 1, "run": 1, "jump": 1, "eat": 1, "drink": 1, "sleep": 1, "mother": 2, "father": 2, "sister": 2, "brother": 2, "baby": 2, "apple": 2, "banana": 3, "egg": 1, "milk": 1, "bread": 1, "house": 1, "door": 1, "window": 2, "table": 2, "chair": 1, "bed": 1, "tree": 1, "flower": 2, "bird": 1, "fish": 1, "hand": 1, "foot": 1, "eye": 1, "ear": 1, "nose": 1, "mouth": 1, "head": 1, "leg": 1, "arm": 1, "face": 1, "one": 1, "two": 1, "three": 1, "four": 1, "five": 1, "six": 1, "seven": 2, "eight": 1, "nine": 1, "ten": 1, "boy": 1, "girl": 1, "man": 1, "woman": 2, "friend": 1, "teacher": 2, "school": 1, "class": 1, "desk": 1, "play": 1, "happy": 2, "sad": 1, "angry": 2, "tired": 1, "hungry": 2, "thirsty": 2, "cold": 1, "hot": 1, "warm": 1, "cool": 1, "morning": 2, "afternoon": 3, "evening": 2, "night": 1, "today": 2, "tomorrow": 3, "yesterday": 3, "week": 1, "month": 1, "year": 1, "breakfast": 2, "lunch": 1, "dinner": 2, "orange": 2, "grape": 1, "mango": 2, "lemon": 2, "cherry": 2, "peach": 1, "melon": 2, "chicken": 2, "rice": 1, "noodle": 2, "soup": 1, "cake": 1, "candy": 2, "chocolate": 3, "biscuit": 2, "juice": 1, "water": 2, "garden": 2, "park": 1, "zoo": 1, "farm": 1, "beach": 1, "mountain": 2, "river": 2, "lake": 1, "sea": 1, "sky": 1, "lion": 2, "tiger": 2, "elephant": 3, "monkey": 2, "rabbit": 2, "horse": 1, "sheep": 1, "cow": 1, "pig": 1, "duck": 1, "family": 3, "parent": 2, "uncle": 2, "aunt": 1, "cousin": 2, "grandma": 2, "grandpa": 2, "neighbour": 2, "people": 2, "child": 1, "walk": 1, "talk": 1, "sing": 1, "dance": 1, "draw": 1, "write": 1, "read": 1, "listen": 2, "watch": 1, "help": 1, "beautiful": 3, "wonderful": 3, "careful": 2, "helpful": 2, "useful": 2, "powerful": 3, "colourful": 3, "peaceful": 2, "thankful": 2, "cheerful": 2, "weather": 2, "season": 2, "spring": 1, "summer": 2, "autumn": 2, "winter": 2, "sunny": 2, "cloudy": 2, "rainy": 2, "windy": 2, "kitchen": 2, "bathroom": 2, "bedroom": 2, "garage": 2, "balcony": 3, "ceiling": 2, "carpet": 2, "curtain": 2, "homework": 2, "lesson": 2, "subject": 2, "english": 2, "chinese": 2, "maths": 1, "science": 2, "music": 2, "library": 3, "museum": 3, "hospital": 3, "restaurant": 3, "supermarket": 4, "airport": 2, "station": 2, "cinema": 3, "theatre": 2, "stadium": 3, "police": 2, "doctor": 2, "nurse": 1, "driver": 2, "pilot": 2, "farmer": 2, "worker": 2, "singer": 2, "player": 2, "artist": 2, "because": 2, "although": 2, "however": 3, "therefore": 2, "meanwhile": 2, "suddenly": 3, "finally": 3, "actually": 4, "especially": 4, "probably": 3, "different": 3, "important": 3, "interesting": 4, "difficult": 3, "dangerous": 3, "expensive": 3, "delicious": 3, "necessary": 4, "possible": 3, "terrible": 3, "exercise": 3, "practice": 2, "holiday": 3, "journey": 2, "adventure": 3, "treasure": 2, "machine": 2, "language": 2, "knowledge": 2, "experience": 4, "environment": 4, "government": 3, "development": 4, "education": 4, "information": 4, "communication": 5, "transportation": 4, "population": 4, "celebration": 4, "competition": 4, "responsibility": 6, "opportunity": 5, "possibility": 5, "ability": 4, "activity": 4, "reality": 4, "society": 3, "community": 4, "security": 4, "quality": 3, "temperature": 4, "literature": 4, "agriculture": 4, "architecture": 4, "photograph": 3, "geography": 4, "biography": 4, "technology": 4, "psychology": 4, "philosophy": 4, "immediately": 5, "independent": 4, "intelligent": 4, "excellent": 3, "successful": 3, "confident": 3, "permanent": 3, "significant": 4, "traditional": 4, "international": 5, "guarantee": 3, "committee": 3, "occurrence": 3, "recommend": 3, "separate": 3, "definitely": 4, "embarrass": 3, "accommodation": 5, "conscience": 2, "february": 3, "behaviour": 3, "favourite": 3, "honour": 2, "labour": 2, "colour": 2, "humour": 2, "flavour": 2, "dictionary": 4, "vocabulary": 5, "grammar": 2, "sentence": 2, "paragraph": 3, "punctuation": 4, "alphabet": 3, "syllable": 3, "pronunciation": 5, "spelling": 2, "vegetable": 4, "cucumber": 3, "tomato": 3, "potato": 3, "cabbage": 2, "lettuce": 2, "spinach": 2, "broccoli": 3, "cauliflower": 4, "mushroom": 2, "straight": 1, "height": 1, "weight": 1, "freight": 1, "daughter": 2, "laughter": 2, "thought": 1, "brought": 1, "scissors": 2, "scene": 1, "schedule": 2, "scholar": 2, "scientist": 3, "conscious": 2, "rhythm": 2, "pneumonia": 3, "knee": 1, "knife": 1, "knock": 1, "know": 1, "knight": 1, "knit": 1, "knot": 1, "whistle": 2, "castle": 2, "hasten": 2, "soften": 2, "thistle": 2, "glisten": 2, "fasten": 2, "business": 2, "busy": 2, "bought": 1, "caught": 1, "taught": 1, "through": 1, "though": 1, "thorough": 2, "quiet": 2, "creature": 2, "idea": 3, "area": 3, "piano": 3, "radio": 3, "video": 3};
+
 function seededShuffle(arr, seed) {
   const a = [...arr];
   let s = seed, i = a.length, j;
@@ -163,6 +168,7 @@ function runTests() {
     normPass: 0, normFail: [],
     sylPass: 0,  sylFail: [],
     letPass: 0,  letFail: [],
+    accPass: 0,  accFail: [],
     sgfwFallback: []
   };
 
@@ -183,6 +189,13 @@ function runTests() {
       const strip = s => String(s).toLowerCase().replace(/[^a-z]/g, '');
       if (strip(syls.join('')) === strip(w)) R.sylPass++;
       else R.sylFail.push({ g, w, syls, rejoined: strip(syls.join('')), expected: strip(w) });
+
+      // syllable-COUNT accuracy against the curated table
+      const expN = EXPECTED_SYLLABLES[w.toLowerCase()];
+      if (expN !== undefined) {
+        if (syls.length === expN) R.accPass++;
+        else R.accFail.push({ g, w, syls, got: syls.length, exp: expN });
+      }
 
       // syllableGroupsForWord must NOT silently fall back to the whole word
       const sgfw = W.syllableGroupsForWord({ word: w, syllables: syls });
@@ -218,10 +231,11 @@ function runTests() {
 }
 
 function render(words, R) {
-  const totalFail = R.normFail.length + R.sylFail.length + R.letFail.length;
+  const totalFail = R.normFail.length + R.sylFail.length + R.letFail.length + R.accFail.length;
   const totalChecks = R.normPass + R.normFail.length
                     + R.sylPass  + R.sylFail.length
-                    + R.letPass  + R.letFail.length;
+                    + R.letPass  + R.letFail.length
+                    + R.accPass  + R.accFail.length;
 
   const groupCounts = {};
   words.forEach(x => groupCounts[x.g] = (groupCounts[x.g] || 0) + 1);
@@ -245,6 +259,10 @@ function render(words, R) {
         <td>${R.letPass + R.letFail.length}</td>
         <td class="ok">${R.letPass}</td>
         <td class="${R.letFail.length ? 'bad' : 'ok'}">${R.letFail.length}</td></tr>
+    <tr><td>4️⃣ 音節數準確度 — 對比權威字典</td>
+        <td>${R.accPass + R.accFail.length}</td>
+        <td class="ok">${R.accPass} (${(R.accPass/Math.max(1,R.accPass+R.accFail.length)*100).toFixed(1)}%)</td>
+        <td class="${R.accFail.length ? 'bad' : 'ok'}">${R.accFail.length}</td></tr>
     <tr style="background:#fafafa;font-weight:700">
         <td>總計</td><td>${totalChecks}</td>
         <td class="ok">${totalChecks - totalFail}</td>
@@ -279,6 +297,15 @@ function render(words, R) {
     h += `</div>`;
   }
 
+  if (R.accFail.length) {
+    h += `<div class="section bad"><strong>❌ 音節數不準 (${R.accFail.length})</strong>`;
+    R.accFail.slice(0, 60).forEach(f => {
+      h += `<div class="row">[${f.g}] '${f.w}' → [${f.syls.join('|')}] 拆成 ${f.got} 個，應為 ${f.exp} 個</div>`;
+    });
+    if (R.accFail.length > 60) h += `<div class="row">… 另外 ${R.accFail.length - 60} 個</div>`;
+    h += `</div>`;
+  }
+
   if (R.letFail.length) {
     h += `<div class="section bad"><strong>❌ Letters 洗牌失敗 (${R.letFail.length})</strong>`;
     R.letFail.slice(0, 60).forEach(f => {
@@ -298,7 +325,7 @@ function render(words, R) {
   document.getElementById('summary').innerHTML = h;
   document.getElementById('summary').style.display = 'block';
   setStatus('');
-  window.__RESULT__ = { words: words.length, totalChecks, totalFail, R };
+  window.__RESULT__ = { words: words.length, totalChecks, totalFail, accPass: R.accPass, accFail: R.accFail.length, R };
 }
 </script>
 </body>
