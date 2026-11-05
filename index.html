@@ -1643,19 +1643,254 @@
       .toLowerCase();
   }
 
+  // ---- Syllable splitting -------------------------------------------
+  // HARD GUARANTEE: syllables.join('') === the input word (original casing kept),
+  // otherwise the letter-slot and block quizzes can never be completed.
+  //
+  // Precedence:
+  //   1. parent-typed separators  ("qui-et" / "qui/et")
+  //   2. curated dictionary       (words whose vowels no rule can disambiguate)
+  //   3. rule-based split         (magic-e, -ing, then vowel/consonant pattern)
+  //
+  // Every branch re-verifies the guarantee and falls back to the plain
+  // vowel-pattern split if a rule ever produces something that does not
+  // reassemble — so a bad rule can degrade syllable quality but can never
+  // break the quiz.
+
+  // Words where two adjacent vowels are a hiatus (two sounds), not a digraph.
+  // English is genuinely ambiguous here: "ea" is one sound in "bread"/"read"
+  // but two in "real"/"idea"/"create". No rule can tell them apart, so the
+  // common primary-school cases are listed explicitly.
+  const SYLLABLE_DICTIONARY = {
+    // hiatus (vowel + vowel = two syllables)
+    quiet:['qui','et'], quietly:['qui','et','ly'], lion:['li','on'],
+    poem:['po','em'], poet:['po','et'], poetry:['po','et','ry'],
+    diet:['di','et'], react:['re','act'], reaction:['re','ac','tion'],
+    real:['re','al'], really:['re','al','ly'], reality:['re','al','i','ty'],
+    giant:['gi','ant'], cruel:['cru','el'], dual:['du','al'], fuel:['fu','el'],
+    idea:['i','de','a'], ideal:['i','de','al'], area:['a','re','a'],
+    piano:['pi','an','o'], radio:['ra','di','o'], video:['vid','e','o'],
+    studio:['stu','di','o'], hero:['he','ro'], zero:['ze','ro'],
+    period:['pe','ri','od'], serious:['se','ri','ous'],
+    various:['va','ri','ous'], curious:['cu','ri','ous'],
+    furious:['fu','ri','ous'], mysterious:['mys','te','ri','ous'],
+    usual:['u','su','al'], usually:['u','su','al','ly'],
+    casual:['cas','u','al'], visual:['vis','u','al'],
+    annual:['an','nu','al'], manual:['man','u','al'],
+    individual:['in','di','vid','u','al'],
+    continue:['con','tin','u','e'], situation:['sit','u','a','tion'],
+    graduation:['grad','u','a','tion'], evaluation:['e','val','u','a','tion'],
+    superior:['su','pe','ri','or'], inferior:['in','fe','ri','or'],
+    interior:['in','te','ri','or'], actually:['ac','tu','al','ly'],
+    theatre:['the','atre'], creature:['crea','ture'],
+    science:['sci','ence'], scientist:['sci','en','tist'],
+    // '-er' endings where the vowel pair is really two sounds
+    player:['play','er'], players:['play','ers'], layer:['lay','er'],
+    prayer:['pray','er'], lawyer:['law','yer'], viewer:['view','er'],
+    // 'y' as the second vowel; last syllable has no written vowel at all
+    rhythm:['rhy','thm'],
+    // consonant+le endings the vowel rule cuts in the wrong place
+    knowledge:['know','ledge'], language:['lan','guage'],
+    business:['busi','ness'],
+    // magic-e already covered by a rule; listed only where the stem is odd
+    fire:['fire'], hire:['hire'], tire:['tire'], wire:['wire'],
+    square:['square'], quite:['quite'],
+    // "-ience"/"-uence" hiatus: the "i"/"u" starts a new syllable, which the
+    // vowel-cluster pattern cannot see (it reads "rience" as one nucleus)
+    experience:['ex','pe','ri','ence'], audience:['au','di','ence'],
+    convenience:['con','ven','i','ence'], violence:['vi','o','lence'],
+    influence:['in','flu','ence'],    // compounds and irregular stems no rule can reach
+    homework:['home','work'], therefore:['there','fore'],
+    whereas:['where','as'], whoever:['who','ev','er'],
+    museum:['mu','se','um'], stadium:['sta','di','um'],
+    aquarium:['a','qua','ri','um'], medium:['me','di','um'],
+    evening:['eve','ning'], geography:['ge','og','ra','phy'],
+    biography:['bi','og','ra','phy'], photograph:['pho','to','graph'],
+    punctuation:['punc','tu','a','tion'],
+    pronunciation:['pro','nun','ci','a','tion'],
+    immediately:['im','me','di','ate','ly'],
+    cauliflower:['caul','i','flow','er'], powerhouse:['pow','er','house'],
+    // multi-word entries
+    'living room':['liv','ing','room'],
+    'ice cream':['ice','cream'],
+  };
+
+  // Slice `word` at the boundaries implied by `parts` (lengths only), so the
+  // caller's original capitalisation survives a dictionary lookup.
+  function sliceByParts(word, parts) {
+    const out = [];
+    let i = 0;
+    for (const p of parts) {
+      const n = String(p).length;
+      if (n <= 0) continue;
+      out.push(word.slice(i, i + n));
+      i += n;
+    }
+    if (i < word.length) out.push(word.slice(i));
+    return out;
+  }
+
+  function hasVowel(s) { return /[aeiouy]/i.test(s); }
+
+  // Reject any split that cannot rebuild the word, or that leaves a fragment
+  // with no vowel in it (such a tile can never be a real syllable).
+  //
+  // `requireVowel` is false for curated dictionary entries: those are
+  // hand-checked, and some real English syllables have no written vowel at all
+  // ("rhy|thm", where the second syllable is an unwritten schwa). The vowel
+  // guard only protects the RULE path, where it catches nonsense output such
+  // as ["k","ing"] from splitting "-ing" off "king".
+  function validSplit(parts, word, requireVowel) {
+    if (!Array.isArray(parts) || parts.length === 0) return false;
+    if (parts.some(p => !p || p.length === 0)) return false;
+    if (parts.join('') !== word) return false;
+    if (requireVowel !== false && parts.some(p => !hasVowel(p))) return false;
+    return true;
+  }
+
+  // Plain vowel/consonant pattern split — the original behaviour, kept as the
+  // last-resort fallback because it always reassembles the word.
+  function patternSplit(word) {
+    const parts = word.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
+    return parts && parts.length > 0 ? parts : [word];
+  }
+
+  // ---- Silent final "e" ---------------------------------------------
+  // vowel + ONE OR MORE consonants + "e"  =>  that "e" is silent.
+  //   game, come, quite, fire, alone -> a|lone, horse, nurse, dance, orange
+  // Two exclusions:
+  //   * "-Cle" (consonant + le) really is its own syllable: ta|ble, ap|ple,
+  //     lit|tle, peo|ple.  Note "while"/"smile" are NOT excluded because the
+  //     letter before "le" is a vowel there.
+  //   * a vowel straight before the "e": tree, agree, shoe — no silent e.
+  function endsSilentE(w) {
+    return /[aeiouy][^aeiouy]+e$/i.test(w) && !/[^aeiouyl]le$/i.test(w);
+  }
+
+  // Inflected silent e: "tired", "danced", "used", "liked" stay one syllable.
+  // "-ed" IS a syllable after t/d (want|ed, need|ed), so exclude those.
+  // "-es" is left alone on purpose: hors|es, danc|es, box|es are two syllables.
+  function endsSilentEd(w) {
+    return /[aeiouy][^aeiouy]+ed$/i.test(w)
+        && !/[td]ed$/i.test(w)
+        && !/[^aeiouyl]led$/i.test(w);
+  }
+
+  // Merge the trailing silent-e piece back into the previous syllable, but only
+  // when that piece is pure coda (consonants + the silent e, no vowel of its
+  // own). Guards against mangling words like "therefore", where the final
+  // piece "fore" carries a real vowel and must not swallow its neighbour.
+  function mergeSilentE(word, parts) {
+    if (parts.length < 2) return parts;
+    if (!endsSilentE(word) && !endsSilentEd(word)) return parts;
+    const last = parts[parts.length - 1];
+    if (!/^[^aeiouy]+e$/i.test(last) && !/^[^aeiouy]+ed$/i.test(last)) return parts;
+    const head = parts.slice(0, -1);
+    head[head.length - 1] = head[head.length - 1] + last;
+    return head;
+  }
+
+  // Suffixes that reliably form their own syllable, longest first so that
+  // "-ment" is peeled before "-s" and "-ing" before "-in".
+  const SYLLABIC_SUFFIXES = [
+    'ness', 'ment', 'ful', 'less', 'ing', 'est', 'er', 'ly', 'ed',
+  ];
+
+  // Peel one syllabic suffix off the end and recurse on the stem.
+  // Handles: care|ful, use|ful, peace|ful, be|ing, read|ing, say|ing,
+  //          defi|nite|ly, big|ger, run|ning, sit|ting, sing|er, work|er.
+  function peelSuffix(word) {
+    const lower = word.toLowerCase();
+    for (const suf of SYLLABIC_SUFFIXES) {
+      if (!lower.endsWith(suf)) continue;
+      let stem = word.slice(0, word.length - suf.length);
+      let tail = word.slice(stem.length);
+      // the stem must still be pronounceable on its own
+      if (stem.length < 2 || !hasVowel(stem)) continue;
+      // doubled final consonant moves one letter to the suffix:
+      // "bigg"+"er" -> "big"+"ger", "runn"+"ing" -> "run"+"ning"
+      const dm = stem.match(/([^aeiouy])\1$/i);
+      if (dm && /^[aeiouy]/i.test(tail)) {
+        stem = stem.slice(0, -1);
+        tail = dm[1] + tail;
+      }
+      if (!hasVowel(stem)) continue;
+      const stemParts = splitCore(stem);
+      const parts = stemParts.concat([tail]);
+      if (validSplit(parts, word)) return parts;
+    }
+    return null;
+  }
+
+  // Core split: vowel/consonant pattern, then the silent-e merge.
+  function splitCore(word) {
+    const parts = mergeSilentE(word, patternSplit(word));
+    return validSplit(parts, word) ? parts : patternSplit(word);
+  }
+
+  function ruleSplit(word) {
+    // A word ending in a silent e/ed is resolved first: peeling "-ed" off
+    // "tired" would otherwise give "tir|ed" instead of the correct single
+    // syllable.
+    const core = splitCore(word);
+    if (endsSilentE(word) || endsSilentEd(word)) {
+      if (validSplit(core, word)) return core;
+    }
+    const peeled = peelSuffix(word);
+    if (peeled && validSplit(peeled, word)) return peeled;
+    return validSplit(core, word) ? core : patternSplit(word);
+  }
+
   // Auto-syllabify helper if parent enters plain word without hyphens
   function autoSplitSyllables(rawWord) {
-    const cleaned = String(rawWord).normalize('NFKC').replace(/[\u200b-\u200d\ufeff]/g, '').trim();
+    const cleaned = String(rawWord).normalize('NFKC')
+      .replace(/[\u200b-\u200d\ufeff]/g, '')
+      .replace(/[^\x00-\x7F]/g, '')
+      .trim();
+    if (!cleaned) return [];
+
+    // 1. Explicit separators typed by the parent always win.
+    //    Note: the hyphens are intentionally dropped — addCustomWord stores
+    //    syllables.join('') as the word, so "qui-et" is saved as "quiet" with
+    //    syllables ['qui','et'], which keeps the reassembly guarantee intact.
     if (cleaned.includes('-')) {
-      return cleaned.split('-').map(s => s.trim()).filter(Boolean);
+      const parts = cleaned.split('-').map(s => s.trim()).filter(Boolean);
+      if (parts.length > 0) return parts;
     }
-    // A parent may separate syllables with a slash too (e.g. "qui/et")
     if (cleaned.includes('/')) {
       const bySep = cleaned.split('/').map(s => s.trim()).filter(Boolean);
       if (bySep.length > 1) return bySep;
     }
-    const parts = cleaned.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
-    return parts && parts.length > 0 ? parts : [cleaned];
+
+    // 2. Multi-word entry ("living room") — split each word on its own
+    if (/\s/.test(cleaned)) {
+      const dictHit = SYLLABLE_DICTIONARY[cleaned.toLowerCase()];
+      if (dictHit) {
+        const sliced = sliceByParts(cleaned, dictHit);
+        if (validSplit(sliced, cleaned, false)) return sliced;
+      }
+      const perWord = [];
+      cleaned.split(/\s+/).filter(Boolean).forEach(w => {
+        autoSplitSyllables(w).forEach(s => perWord.push(s));
+      });
+      if (validSplit(perWord, cleaned)) return perWord;
+      return [cleaned];
+    }
+
+    // 3. Curated dictionary
+    const dictParts = SYLLABLE_DICTIONARY[cleaned.toLowerCase()];
+    if (dictParts) {
+      const sliced = sliceByParts(cleaned, dictParts);
+      if (validSplit(sliced, cleaned, false)) return sliced;
+    }
+
+    // 4. Rules
+    const ruled = ruleSplit(cleaned);
+    if (validSplit(ruled, cleaned)) return ruled;
+
+    // 5. Last resort — always reassembles
+    const fallback = patternSplit(cleaned);
+    return validSplit(fallback, cleaned) ? fallback : [cleaned];
   }
 
   // Syllables must rebuild the exact word, otherwise the letter-slot quiz can never be completed.
