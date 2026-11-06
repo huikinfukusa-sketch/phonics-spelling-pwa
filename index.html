@@ -306,6 +306,29 @@
     margin-top: 4px;
   }
 
+  .ipa-kind-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    background: #E7F5FF;
+    color: #1971C2;
+    border: 1px solid #A5D8FF;
+  }
+  /* When there is no curated transcription we show the spelling split instead,
+     and the label must say so plainly rather than imply phonetic notation. */
+  .full-ipa-row.split-mode .ipa-kind-label {
+    background: #FFF4E6;
+    color: #D9480F;
+    border-color: #FFD8A8;
+  }
+  .full-ipa-row.split-mode #word-full-ipa {
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+
   .full-ipa-row {
     display: flex;
     justify-content: center;
@@ -891,7 +914,8 @@
         <div class="syllable-showcase" id="syllable-container"></div>
 
         <!-- Full IPA & Meaning -->
-        <div class="full-ipa-row">
+        <div class="full-ipa-row" id="full-ipa-row">
+          <span class="ipa-kind-label" id="word-ipa-label">英式音標</span>
           <span id="word-full-ipa">/kəmˈpjuː.tər/</span>
         </div>
         <div class="pos-meaning" id="word-meaning">n. 電腦；計算機</div>
@@ -1262,11 +1286,67 @@
     }
   }
 
+  // ---- Is this a genuine phonetic transcription? --------------------
+  // A real IPA string always contains at least one true IPA symbol (ə ɪ æ ɑː
+  // ɔː ʊ ʌ ɜː ː ˈ θ ð ʃ …), all of which are non-ASCII. A string built only
+  // from ASCII letters inside slashes — "/lep/", "/e·lep·hant/" — is NOT a
+  // transcription, it is just the spelling wearing a costume. Rendering that as
+  // phonetics actively teaches the wrong sound (a child reading "/hant/" says
+  // /hænt/ instead of /fənt/), so we detect it and show a plainly-labelled
+  // spelling split instead.
+  //
+  // Detection must look for a genuine IPA symbol, NOT merely "any non-ASCII":
+  // the fake strings contain a middle dot (U+00B7) which is non-ASCII too, so a
+  // loose test waves them through. The class below covers IPA Extensions
+  // (U+0250-02AF: ə ɪ ʊ ʌ ɜ ɔ ɑ ɒ ʃ ʒ ɛ ...), Spacing Modifier Letters
+  // (U+02B0-02FF: the length mark ː and stress marks ˈ ˌ), plus the four IPA
+  // symbols that live outside those blocks: æ ð ŋ θ.
+  //
+  // Failure mode is safe: a genuinely all-ASCII transcription such as "/bed/"
+  // is treated as absent, so the child sees the syllable split rather than a
+  // wrong sound. Newer entries also carry an explicit ipaCurated flag.
+  const IPA_SYMBOL_RE = /[\u0250-\u02FF\u00E6\u00F0\u014B\u03B8]/;
+
+  function hasRealIpa(item) {
+    if (!item) return false;
+    if (item.ipaCurated === false) return false;
+    const candidates = [];
+    if (typeof item.fullIpa === 'string' && item.fullIpa) candidates.push(item.fullIpa);
+    if (Array.isArray(item.sylIpa)) {
+      item.sylIpa.forEach(s => { if (typeof s === 'string' && s) candidates.push(s); });
+    }
+    return candidates.some(s => IPA_SYMBOL_RE.test(s));
+  }
+
+  // Per-syllable transcription, or '' when there is no trustworthy one.
+  // Never invents a fake "/syl/" fallback.
+  function syllableIpaAt(item, idx, realIpa) {
+    if (!realIpa) return '';
+    const arr = item && item.sylIpa;
+    if (!Array.isArray(arr)) return '';
+    const v = arr[idx];
+    return (typeof v === 'string' && IPA_SYMBOL_RE.test(v)) ? v : '';
+  }
+
   // Render Learn Card
   function renderLearnCard() {
     const item = wordsData[currentIndex];
     document.getElementById('learn-progress').textContent = `單字 ${currentIndex + 1} / ${wordsData.length}`;
-    document.getElementById('word-full-ipa').textContent = item.fullIpa;
+    const realIpa = hasRealIpa(item);
+    const fullIpaEl = document.getElementById('word-full-ipa');
+    const fullIpaRow = document.getElementById('full-ipa-row');
+    const ipaLabelEl = document.getElementById('word-ipa-label');
+    if (realIpa) {
+      fullIpaEl.textContent = item.fullIpa;
+      if (ipaLabelEl) ipaLabelEl.textContent = '英式音標';
+      if (fullIpaRow) fullIpaRow.classList.remove('split-mode');
+    } else {
+      // No curated transcription for this word: show the spelling split and
+      // label it honestly so nobody mistakes it for phonetic notation.
+      fullIpaEl.textContent = syllableGroupsForWord(item).join(' · ');
+      if (ipaLabelEl) ipaLabelEl.textContent = '拼讀拆分 · 此字暫無音標';
+      if (fullIpaRow) fullIpaRow.classList.add('split-mode');
+    }
     document.getElementById('word-meaning').textContent = item.meaning;
     document.getElementById('word-tip').textContent = item.tip;
     document.getElementById('word-sentence').textContent = item.sentence;
@@ -1279,12 +1359,12 @@
       const col = document.createElement('div');
       col.className = `syl-column color-${idx % 4}`;
       col.id = `syl-col-${idx}`;
-      const ipaPart = (item.sylIpa && item.sylIpa[idx]) ? item.sylIpa[idx] : `/${syl}/`;
+      const ipaPart = syllableIpaAt(item, idx, realIpa);
       const speakPart = (item.sylSpeak && item.sylSpeak[idx]) ? item.sylSpeak[idx] : syl;
 
       col.innerHTML = `
         <div class="syl-letters">${syl}</div>
-        <div class="syl-ipa">${ipaPart}</div>
+        <div class="syl-ipa">${ipaPart || '&nbsp;'}</div>
         <div class="syl-sound-hint">🔊 點擊聽</div>
       `;
       col.onclick = () => {
@@ -1924,9 +2004,13 @@
     wordsData.unshift({
       word: cleanWord,
       syllables: syllables,
-      sylIpa: syllables.map(s => `/${s}/`),
+      // No phonetic transcription is known for a parent-typed word. Store
+      // nothing rather than fake one out of the spelling: the UI checks
+      // hasRealIpa() and falls back to a labelled spelling split.
+      sylIpa: [],
       sylSpeak: syllables,
-      fullIpa: `/${syllables.join('·')}/`,
+      fullIpa: '',
+      ipaCurated: false,
       meaning: meaning,
       tip: note || `拆成 ${syllables.length} 拍來記：${syllables.join(' - ')}`,
       sentence: `Can you spell the word ${cleanWord}?`,
